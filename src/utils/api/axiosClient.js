@@ -1,7 +1,7 @@
 import axios from "axios";
 import queryString from "query-string";
-export const hostServer = "http://localhost:5001";
-// export const hostServer = "https://apply-tech-back-api.onrender.com";
+// export const hostServer = "http://localhost:5001";
+export const hostServer = 'https://apply-tech-back-e8fx.onrender.com';
 
 const axiosClient = axios.create({
   baseURL: `${hostServer}/api/v1/`,
