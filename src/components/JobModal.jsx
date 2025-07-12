@@ -60,6 +60,15 @@ const JobModal = () => {
   const [companyAuth, setCompanyAuth] = useState(dataUpdate?.job?.company);
   const [isChangeAddress, setIsChangeAddress] = useState(false);
   const [newAddress, setNewAddress] = useState(null);
+  
+  useEffect(() => {
+  if (user.role === "company") {
+    const currentCompany = companyData.find(
+      (c) => c.author === user._id
+    );
+    setCompanyAuth(currentCompany);
+  }
+}, [user, companyData]);
 
   useEffect(() => {
     if (!dataUpdate?.job?.company && companyData.length && formValues.company) {
@@ -131,7 +140,7 @@ const JobModal = () => {
           {dataUpdate ? "Cập nhật công việc" : "Thêm công việc mới"}
         </Typography>
 
-        {user.role === "admin" && (
+        {user.role === "admin" &&  (
           <FormControl fullWidth required>
             <InputLabel>Công ty</InputLabel>
             <Select
