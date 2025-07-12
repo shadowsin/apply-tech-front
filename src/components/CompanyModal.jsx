@@ -1,369 +1,343 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
+import { useNavigate, useParams } from "react-router-dom";
+
 import {
-  Modal,
   Box,
-  TextField,
-  Button,
-  FormControl,
-  FormControlLabel,
-  FormLabel,
-  Paper,
-  Radio,
-  RadioGroup,
-  Typography,
+  Divider,
+  IconButton,
   LinearProgress,
+  Paper,
+  Skeleton,
+  Typography,
 } from "@mui/material";
-import { useDispatch, useSelector } from "react-redux";
-import FileBase64 from "react-file-base64";
-import toast from "react-hot-toast";
+import LocationOnIcon from "@mui/icons-material/LocationOn";
+import BookmarksIcon from "@mui/icons-material/Bookmarks";
+import LanguageIcon from "@mui/icons-material/Language";
+import FacebookIcon from "@mui/icons-material/Facebook";
+import SocialDistanceIcon from "@mui/icons-material/SocialDistance";
+import AttachEmailIcon from "@mui/icons-material/AttachEmail";
+import EmailIcon from "@mui/icons-material/Email";
 
-import { setModal } from "../slice/companySlice";
-import JobItem from "./JobItem";
-import CompanyAddress from "./CompanyAddress";
-import { companyApi } from "../utils/api/companyApi";
-import { address as getAddress } from "../actions/userAddress";
+import JobItem from "../../components/JobItem";
+import { address } from "../../actions/userAddress";
+import { companyApi } from "../../utils/api/companyApi";
+import Comment from "../../components/Comment";
+import { commentApi } from "../../utils/api/commentApi";
+import { getGeocoding } from "../../actions/getGeocoding";
+import { getDistance } from "../../actions/getDistance";
 
-const modalStyle = {
-  position: "absolute",
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  width: { xs: "90%", md: "80%", lg: "max-content" },
-  bgcolor: "background.paper",
-  boxShadow: 24,
-  p: 4,
-  borderRadius: 2,
-  display: "flex",
-  gap: 4,
-  flexWrap: "wrap",
-  maxHeight: "90vh",
-  overflowY: "auto",
-};
+const Company = () => {
+  const param = useParams();
+  const navigate = useNavigate();
 
-const CompanyModal = () => {
-  const { show: open, data: dataUpdate } = useSelector(
-    (state) => state.company.modal
-  );
-  const dispatch = useDispatch();
-
+  const [company, setCompany] = useState(null);
+  const [jobsOfCompany, setJobsOfCompany] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [jobsOfCompany, setJobsOfCompany] = useState([]);
-  const [formValues, setFormValues] = useState({
-    image: dataUpdate?.image || null,
-    address: dataUpdate?.address || null,
-    ot: dataUpdate?.ot === "Có tăng ca" ? 1 : 0,
-  });
+  const [comments, setComments] = useState(null);
+  const [geo1, setGeo1] = useState(null);
+  const [geo2, setGeo2] = useState(null);
+
+  const user = useSelector((state) => state.user.user);
 
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      if (dataUpdate?._id) {
-        const data = await companyApi.getCompanyJobs(dataUpdate._id);
-        setJobsOfCompany(data);
-      }
+    const getCompany = async () => {
+      const [result, jobsOfCompany, comments] = await Promise.all([
+        companyApi.getCompany(param?.id),
+        companyApi.getCompanyJobs(param?.id),
+        commentApi.getCommentByCompany(param?.id),
+      ]);
+
+      setCompany(result);
+      setJobsOfCompany(jobsOfCompany);
       setIsLoading(false);
+      setComments(comments);
     };
-    fetchData();
-    if (dataUpdate?.address) {
-      setFormValues((prev) => ({ ...prev, address: dataUpdate.address }));
-    }
-  }, [dataUpdate]);
+    getCompany();
+  }, [param?.id]);
 
-  const handleClose = () => {
-    dispatch(setModal({ show: false, data: null }));
-    setFormValues({ image: null, address: null, ot: 0 });
-    setJobsOfCompany([]);
-  };
-
-  const handleDelete = async () => {
-    try {
-      await toast.promise(companyApi.deleteCompany(dataUpdate?._id), {
-        loading: "Đang xóa...",
-        success: "Xóa thành công!",
-        error: "Xóa thất bại",
-      });
-      handleClose();
-    } catch (error) {
-      toast.error("Lỗi khi xóa công ty");
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const data = {
-      image: formValues.image,
-      name: formData.get("name"),
-      address: formValues.address,
-      country: formData.get("country"),
-      website: formData.get("website"),
-      social: formData.get("facebook"),
-      description: formData.get("description"),
-      scale: formData.get("scale"),
-      ot: formValues.ot ? "Có tăng ca" : "Không tăng ca",
-    };
-
-    try {
-      await toast.promise(
-        dataUpdate
-          ? companyApi.updateCompany({ id: dataUpdate._id, company: data })
-          : companyApi.createCompany(data),
-        {
-          loading: dataUpdate ? "Đang cập nhật..." : "Đang tạo...",
-          success: dataUpdate ? "Cập nhật thành công!" : "Tạo thành công!",
-          error: dataUpdate ? "Cập nhật thất bại" : "Tạo thất bại",
-        }
+  useEffect(() => {
+    if (!user) return;
+    if (company && company.address) {
+      getGeocoding(address({ ...company.address, street: null })).then((data) =>
+        setGeo1([data.lat, data.lon])
       );
-      handleClose();
-    } catch (error) {
-      console.error("Error submitting company:", error);
     }
-  };
 
-  const handleFileUpload = (e) => {
-    if (!e.type.includes("image")) {
-      toast.error("Vui lòng chọn file ảnh hợp lệ");
-      return;
+    if (user && user.address) {
+      if (user.address.lat && user.address.lng) {
+        setGeo2([user.address.lat, user.address.lng]);
+      } else {
+        getGeocoding(address({ ...user.address, street: null })).then((data) =>
+          setGeo2([data.lat, data.lon])
+        );
+      }
     }
-    setFormValues((prev) => ({ ...prev, image: e.base64 }));
-  };
+  }, [company, user]);
+
+  const distance = useMemo(() => {
+    if (!geo1 || !geo2) return null;
+    return getDistance(geo1, geo2);
+  }, [geo1, geo2]);
 
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      aria-labelledby="company-modal-title"
-    >
-      <Box sx={modalStyle}>
-        <Box
-          component="form"
-          onSubmit={handleSubmit}
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 2,
-            minWidth: { xs: "100%", md: 400 },
-            maxWidth: 500,
-            maxHeight: 800,
-            overflowY: "auto",
-          }}
-        >
-          <Typography
-            id="company-modal-title"
-            variant="h6"
-            align="center"
-            sx={{ fontWeight: 600, mb: 2 }}
-          >
-            {dataUpdate ? "Chỉnh sửa thông tin công ty" : "Tạo công ty mới"}
-          </Typography>
-
-          <Paper
-            sx={{
-              p: 2,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 2,
-              border: "1px solid",
-              borderColor: "grey.200",
-              borderRadius: 2,
-            }}
-          >
-            {formValues.image && (
-              <Box
-                component="img"
-                src={formValues.image}
-                alt="Company logo"
-                sx={{
-                  width: "100%",
-                  maxWidth: 200,
-                  height: "auto",
-                  borderRadius: 1,
-                  boxShadow: 1,
-                  objectFit: "contain",
-                }}
-              />
-            )}
-            <FileBase64
-              multiple={false}
-              onDone={handleFileUpload}
+    <Box minHeight={"80vh"}>
+      {isLoading ? (
+        <LinearProgress />
+      ) : (
+        <Box>
+          <Divider sx={{ color: "white" }} />
+          <Box sx={{ display: "flex", gap: 3, px: 10 }}>
+            <img
+              src={company?.image}
               style={{
-                width: "100%",
-                maxWidth: 200,
-                padding: 8,
-                border: "2px dashed",
-                borderColor: "primary.main",
-                borderRadius: 4,
-                textAlign: "center",
-                cursor: "pointer",
-                bgcolor: "primary.50",
-                transition: "background-color 0.2s",
-                "&:hover": { bgcolor: "primary.100" },
+                borderRadius: 5,
+                width: 200,
+                height: 200,
+                objectFit: "cover",
               }}
+              alt="logo-company"
             />
-          </Paper>
-
-          <TextField
-            label="Tên công ty"
-            name="name"
-            defaultValue={dataUpdate?.name}
-            fullWidth
-            required
-            margin="normal"
-          />
-          <TextField
-            label="Giới thiệu công ty"
-            name="description"
-            defaultValue={dataUpdate?.description}
-            multiline
-            rows={4}
-            fullWidth
-            required
-            margin="normal"
-          />
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
-            <TextField
-              label="Quy mô"
-              name="scale"
-              defaultValue={dataUpdate?.scale}
-              required
-              sx={{ flex: "1 1 200px" }}
-            />
-            <TextField
-              label="Quốc gia"
-              name="country"
-              defaultValue={dataUpdate?.country}
-              required
-              sx={{ flex: "1 1 200px" }}
-            />
-            <TextField
-              label="Website"
-              name="website"
-              defaultValue={dataUpdate?.website}
-              required
-              sx={{ flex: "1 1 200px" }}
-            />
-            <TextField
-              label="Facebook"
-              name="facebook"
-              defaultValue={dataUpdate?.social}
-              required
-              sx={{ flex: "1 1 200px" }}
-            />
-          </Box>
-
-          <Paper elevation={3} sx={{ p: 2, my: 2 }}>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              Địa chỉ hiện tại: <b>{getAddress(dataUpdate?.address) || "-"}</b>
-            </Typography>
-            <CompanyAddress
-              setInitialAddress={(addr) =>
-                setFormValues((prev) => ({ ...prev, address: addr }))
-              }
-            />
-          </Paper>
-
-          <FormControl>
-            <FormLabel>Tăng ca</FormLabel>
-            <RadioGroup
-              value={formValues.ot}
-              onChange={(e) =>
-                setFormValues((prev) => ({ ...prev, ot: +e.target.value }))
-              }
-            >
-              <FormControlLabel
-                value={0}
-                control={<Radio />}
-                label="Không tăng ca"
-              />
-              <FormControlLabel
-                value={1}
-                control={<Radio />}
-                label="Có tăng ca"
-              />
-            </RadioGroup>
-          </FormControl>
-
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, mt: 2 }}>
-            <Button
-              variant="contained"
-              color="success"
-              fullWidth
-              type="submit"
-              sx={{ flex: 1, minWidth: 120 }}
-            >
-              Lưu
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              fullWidth
-              onClick={handleClose}
-              sx={{ flex: 1, minWidth: 120 }}
-            >
-              Hủy
-            </Button>
-            {dataUpdate && (
-              <Button
-                variant="outlined"
-                color="error"
-                fullWidth
-                onClick={handleDelete}
-                disabled={jobsOfCompany?.length > 0}
-                sx={{ flex: 1, minWidth: 120 }}
-              >
-                {jobsOfCompany?.length > 0 ? (
-                  <Typography variant="body2" fontStyle="italic">
-                    Cần xóa hết công việc trước
-                  </Typography>
-                ) : (
-                  "Xóa"
-                )}
-              </Button>
-            )}
-          </Box>
-        </Box>
-
-        {dataUpdate?._id && (
-          <Box
-            sx={{
-              minWidth: { xs: "100%", md: 400 },
-              maxWidth: 600,
-              maxHeight: 800,
-              overflowY: "auto",
-              p: 2,
-              bgcolor: "grey.50",
-              borderRadius: 2,
-            }}
-          >
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-              Công việc của công ty
-            </Typography>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {jobsOfCompany?.length && !isLoading ? (
-                jobsOfCompany.map((job) => <JobItem key={job._id} {...job} />)
-              ) : isLoading ? (
-                <LinearProgress
+            <Box display={"flex"} flexDirection={"column"} gap={1}>
+              <Typography fontWeight={600} color={"white"} fontSize={30}>
+                {company?.name}
+              </Typography>
+              <Box sx={{ display: "flex", gap: 3 }}>
+                <Box
                   sx={{
-                    minWidth: { xs: "100%", md: 400 },
-                    maxWidth: 600,
-                    maxHeight: 800,
-                    overflowY: "auto",
-                    bgcolor: "grey.50",
-                    borderRadius: 2,
+                    display: "flex",
+                    flexDirection: "row",
+                    gap: 1,
+                    alignItems: "center",
                   }}
-                />
-              ) : (
-                <Typography color="text.secondary" fontStyle="italic">
-                  Chưa có công việc nào
+                >
+                  <LocationOnIcon sx={{ color: "white" }} />
+                  <Typography fontWeight={600} color={"white"} fontSize={20}>
+                    {address(company?.address)}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "row",
+                    gap: 1,
+                    alignItems: "center",
+                  }}
+                >
+                  <BookmarksIcon sx={{ color: "white" }} />
+                  <Typography fontWeight={600} color={"white"} fontSize={20}>
+                    {jobsOfCompany?.length} việc làm đang tuyển dụng
+                  </Typography>
+                </Box>
+              </Box>
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "row",
+                  gap: 1,
+                  alignItems: "center",
+                }}
+              >
+                <SocialDistanceIcon sx={{ color: "white" }} />
+                <Typography
+                  fontWeight={600}
+                  color={"white"}
+                  fontSize={20}
+                  sx={{ display: "flex", flexDirection: "row", gap: 1 }}
+                >
+                  Khoảng cách đến công ty:{" "}
+                  {distance ? (
+                    distance
+                  ) : (
+                    <Skeleton
+                      variant="text"
+                      animation="pulse"
+                      sx={{
+                        fontSize: "1rem",
+                        width: 50,
+                        backgroundColor: "gray",
+                      }}
+                    />
+                  )}
                 </Typography>
-              )}
+              </Box>
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "row",
+                  gap: 1,
+                  alignItems: "center",
+                }}
+              >
+                <EmailIcon sx={{ color: "white" }} />
+                <Typography fontWeight={600} color={"white"} fontSize={20}>
+                  Gửi email
+                </Typography>
+                <IconButton
+                  sx={{
+                    width: 50,
+                    height: 50,
+                    p: 2,
+                    background: "rgba(165,219,146,.1)",
+                    ml: 2,
+                  }}
+                  color="success"
+                  onClick={() => navigate(`/company/${company._id}/send-email`)}
+                >
+                  <AttachEmailIcon color="success" />
+                </IconButton>
+              </Box>
             </Box>
           </Box>
-        )}
-      </Box>
-    </Modal>
+          <Box
+            sx={{
+              mt: 5,
+              background: "#ddd",
+              display: "flex",
+              width: "100%",
+              justifyContent: "center",
+              px: 10,
+            }}
+          >
+            <Box
+              sx={{
+                py: 3,
+                width: "70%",
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+              }}
+            >
+              <Paper>
+                <Typography
+                  fontSize={23}
+                  fontWeight={600}
+                  color={"red"}
+                  pl={5}
+                  py={3}
+                >
+                  Giới thiệu
+                </Typography>
+              </Paper>
+
+              <Paper sx={{ p: 3, borderRadius: 2 }}>
+                <Typography variant="h6" fontWeight={600} mb={2}>
+                  Thông tin công ty
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+                  <Box sx={{ flex: "1 1 200px" }}>
+                    <Typography color="text.secondary">
+                      Mô hình công ty
+                    </Typography>
+                    <Typography fontWeight={600} fontSize={18}>
+                      Sản phẩm
+                    </Typography>
+                  </Box>
+                  <Box sx={{ flex: "1 1 200px" }}>
+                    <Typography color="text.secondary">
+                      Quy mô công ty
+                    </Typography>
+                    <Typography fontWeight={600} fontSize={18}>
+                      {company?.scale || "-"}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ flex: "1 1 200px" }}>
+                    <Typography color="text.secondary">Quốc gia</Typography>
+                    <Typography fontWeight={600} fontSize={18}>
+                      {company?.country || "-"}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ flex: "1 1 200px" }}>
+                    <Typography color="text.secondary">
+                      Thời gian làm việc
+                    </Typography>
+                    <Typography fontWeight={600} fontSize={18}>
+                      Thứ 2 - Thứ 6
+                    </Typography>
+                  </Box>
+                  <Box sx={{ flex: "1 1 200px" }}>
+                    <Typography color="text.secondary">Giờ làm việc</Typography>
+                    <Typography fontWeight={600} fontSize={18}>
+                      {company?.ot || "-"}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
+
+              <Paper sx={{ p: 3, borderRadius: 2 }}>
+                <Typography
+                  variant="h6"
+                  fontWeight={600}
+                  color="error.main"
+                  mb={2}
+                >
+                  Giới thiệu công ty
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+                <Typography sx={{ whiteSpace: "pre-wrap" }}>
+                  {company?.description || "Chưa có thông tin giới thiệu"}
+                </Typography>
+                <Divider sx={{ my: 2 }} />
+                <Box sx={{ display: "flex", gap: 3, alignItems: "center" }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <LanguageIcon color="primary" />
+                    <Typography fontWeight={600}>
+                      <a
+                        href={company?.website || "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: "primary.main",
+                          textDecoration: "none",
+                        }}
+                      >
+                        Website công ty
+                      </a>
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <FacebookIcon color="primary" />
+                    <Typography fontWeight={600}>
+                      <a
+                        href={company?.social || "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: "primary.main",
+                          textDecoration: "none",
+                        }}
+                      >
+                        Fanpage Facebook
+                      </a>
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
+
+             
+
+              <Comment comments={comments} company={company} />
+            </Box>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                p: 2,
+                // maxHeight: 650,
+                overflow: "auto",
+              }}
+            >
+              {jobsOfCompany?.map((job) => (
+                <JobItem key={job._id} {...job} company={company} />
+              ))}
+            </Box>
+          </Box>
+        </Box>
+      )}
+    </Box>
   );
 };
 
-export default CompanyModal;
+export default Company;
